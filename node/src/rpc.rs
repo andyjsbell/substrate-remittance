@@ -14,7 +14,6 @@ use sp_block_builder::BlockBuilder;
 pub use sc_rpc_api::DenyUnsafe;
 use sp_transaction_pool::TransactionPool;
 
-
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
 	/// The client instance to use.
@@ -59,6 +58,10 @@ pub fn create_full<C, P>(
 	// `YourRpcStruct` should have a reference to a client, which is needed
 	// to call into the runtime.
 	// `io.extend_with(YourRpcTrait::to_delegate(YourRpcStruct::new(ReferenceToClient, ...)));`
+	// Add a silly RPC that returns constant values
+	io.extend_with(
+		crate::puzzle_rpc::PuzzleRpc::to_delegate(crate::puzzle_rpc::Puzzle {})
+	);
 
 	io
 }
