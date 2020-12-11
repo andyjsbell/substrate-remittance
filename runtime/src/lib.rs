@@ -40,6 +40,7 @@ pub use frame_support::{
 
 /// Import the template pallet.
 pub use pallet_template;
+pub use pallet_remittance;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -266,6 +267,11 @@ impl pallet_template::Trait for Runtime {
 	type Event = Event;
 }
 
+/// Configure the template pallet in pallets/template.
+impl pallet_remittance::Trait for Runtime {
+	type Event = Event;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -283,6 +289,7 @@ construct_runtime!(
 		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
 		// Include the custom logic from the template pallet in the runtime.
 		TemplateModule: pallet_template::{Module, Call, Storage, Event<T>},
+		Remittance: pallet_remittance::{Module, Call, Storage, Event<T>},
 	}
 );
 
