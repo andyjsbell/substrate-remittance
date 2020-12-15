@@ -23,6 +23,7 @@ jsonrpc-core = '15.0.0'
 structopt = '0.3.8'
 jsonrpc-core-client = "15.0"
 jsonrpc-derive = "15.0"
+hex = "0.4.2"
 
 # local dependencies
 node-template-runtime = { path = '../runtime', version = '2.0.0' }
