@@ -4,7 +4,15 @@ use frame_system::ensure_signed;
 use codec::{Encode, Decode};
 use frame_support::{
 	decl_module, decl_storage, decl_event, decl_error, StorageValue, StorageDoubleMap, RuntimeDebug,
-	dispatch, traits::Get
+	dispatch,
+	traits::{
+		Currency, ExistenceRequirement, Get, ReservableCurrency, WithdrawReason, WithdrawReasons,
+	},
+};
+
+use sp_runtime::{
+	traits::{AccountIdConversion, Saturating, Zero},
+	ModuleId,
 };
 
 #[cfg(test)]
@@ -13,31 +21,48 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+const PALLET_ID: ModuleId = ModuleId(*b"remittan");
+
 pub trait Trait: frame_system::Trait {
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
+	type Currency: Currency<Self::AccountId>;
 }
 
-type Puzzle = u128;
-type Amount = u32;
+type AccountIdOf<T> = <T as frame_system::Trait>::AccountId;
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<AccountIdOf<T>>>::Balance;
+type HashOf<T> = <T as frame_system::Trait>::Hash;
+
+#[derive(Encode, Decode, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct Deposit<AccountId, Balance> {
+	remitter: AccountId,
+	value: Balance,
+}
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Remittance {
-		/// Double map of puzzles with keys of [remitter, puzzle] to [amount]
-		pub Deposits get(fn deposits): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) Puzzle => Amount;
+		/// Map of deposits - Hash -> Deposit
+		pub Deposits get(fn deposits): 
+			map hasher(blake2_128_concat) HashOf<T> => Deposit<AccountIdOf<T>, BalanceOf<T>>;
 	}
 }
 
 decl_event!(
-	pub enum Event<T> where AccountId = <T as frame_system::Trait>::AccountId {
+	pub enum Event<T> where
+	Balance = BalanceOf<T>,
+	<T as frame_system::Trait>::AccountId,
+	<T as frame_system::Trait>::Hash,
+	{
 		/// Deposit made
 		/// [remitter, puzzle, amount]
-		Deposit(AccountId, Puzzle, Amount),
+		Deposit(AccountId, Hash, Balance),
 		/// Transfer made
 		/// [puzzle, remittant, amount]
-	    Transfer(Puzzle, AccountId, Amount),
+	    Transfer(Hash, AccountId, Balance),
 		/// Withdrawal
 		/// [remitter, amount]
-	   	Withdraw(AccountId, Amount),
+	   	Withdraw(AccountId, Balance),
+	   	//Contributed(AccountId, Balance),
 	}
 );
 
@@ -47,7 +72,7 @@ decl_error! {
 		/// Error names should be descriptive.
 		NoneValue,
 		/// Errors should have helpful documentation associated with them.
-		InvalidPassword,
+		InvalidPuzzle,
 	}
 }
 
@@ -63,29 +88,24 @@ decl_module! {
 		fn deposit_event() = default;
 
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		pub fn create_puzzle(origin, password: Puzzle) -> dispatch::DispatchResult {
+		pub fn deposit(origin, puzzle: HashOf<T>, value: BalanceOf<T>) -> dispatch::DispatchResult {
 			let who = ensure_signed(origin)?;
-			frame_support::ensure!(password > 0, Error::<T>::InvalidPassword);
+			let account = Self::account_id(puzzle);
 
-			// return keccak256(abi.encodePacked(recipient, password1, address(this)));
-			Ok(())
-		}
+			T::Currency::transfer(
+				&who,
+				&account,
+				value,
+				ExistenceRequirement::AllowDeath
+			)?;
 
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		pub fn do_something(origin, something: u32) -> dispatch::DispatchResult {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
-			let who = ensure_signed(origin)?;
+			<Deposits<T>>::insert(puzzle, Deposit {
+				remitter: who.clone(),
+				value,
+			});
 
-			// Update storage.
-			// Something::put(something);
+			Self::deposit_event(RawEvent::Deposit(who, puzzle, value));
 
-			// Emit an event.
-			//Self::deposit_event(RawEvent::SomethingStored(something, who));
-			// Return a successful DispatchResult
 			Ok(())
 		}
 
@@ -109,5 +129,15 @@ decl_module! {
 
 			Ok(())
 		}
+	}
+}
+
+impl<T: Trait> Module<T> {
+	/// The account ID of the fund pot.
+	///
+	/// This actually does computation. If you need to keep using it, then make sure you cache the
+	/// value and only call this once.
+	pub fn account_id(index: HashOf<T>) -> T::AccountId {
+		PALLET_ID.into_sub_account(index)
 	}
 }
